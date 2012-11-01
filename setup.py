@@ -1,6 +1,6 @@
 from setuptools import setup
 
-version = '4.7deltaportaal.dev0'
+version = '4.10deltaportaal.dev0'
 
 long_description = '\n\n'.join([
     open('README.rst').read(),
@@ -11,19 +11,21 @@ long_description = '\n\n'.join([
 
 install_requires = [
     'Django',
-    'PIL',
+    'Pillow',
+    'python-dateutil',
     'django-extensions',
     'django-nose',
     'django-piston',
     'django-staticfiles',
-    'lizard-ui >= 4.0b1',
+    'lizard-ui',
     'lizard-help',
     'matplotlib',
     'pkginfo',
-    'django-jsonfield >= 0.8.10',
+    'django-jsonfield',
     'djangorestframework',
     'south',
     'iso8601',
+    'pytz',
     # 'pyproj', Including that as a dependency
     # doesn't work right at the moment.
     # mapnik: sorry, there's no real package for that.  We do need it however.
@@ -44,7 +46,7 @@ setup(name='lizard-map',
       author='Reinout van Rees',
       author_email='reinout.vanrees@nelen-schuurmans.nl',
       url='http://www.nelen-schuurmans.nl/lizard/',
-      license='GPL',
+      license='LGPL',
       packages=['lizard_map'],
       include_package_data=True,
       zip_safe=False,

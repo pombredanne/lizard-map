@@ -99,7 +99,7 @@ urlpatterns = patterns(
     url(r'^workspace/(?P<workspace_id>\d+)/$',
         lizard_map.views.WorkspaceStorageView.as_view(),
         name="lizard_map_workspace_storage"),
-    url(r'^workspace/(?P<workspace_storage_id>\d+)/wms/$',  # L3
+    url(r'^workspace/(?P<workspace_storage_id>\d+)/(?P<workspace_item_id>\d+)/wms/$',  # L3
         'lizard_map.views.wms',
         name="lizard_map_workspace_storage_wms"),
     url(r'^workspace/(?P<workspace_storage_id>\d+)/search_coordinates/',
@@ -126,13 +126,13 @@ urlpatterns = patterns(
         name="lizard_map_adapter_values"),
 
     # Date range
-    url(r'set_animation_date$',
-     'lizard_map.animation.set_animation_date',
-     {},
-     name="lizard_map.set_animation_date"),
-    url(r'^date_range/$',  # L3
-        lizard_map.views.DateRangeView.as_view(),
-        name="lizard_map_date_range"),
+    url(r'^view_state_service/$',
+        lizard_map.views.ViewStateService.as_view(),
+        name="lizard_map_view_state_service"),
+
+    url(r'^location_list_service/$',
+        lizard_map.views.LocationListService.as_view(),
+        name="lizard_map_location_list_service"),
 
     # Load and save map location
     (r'^map_location_save$',

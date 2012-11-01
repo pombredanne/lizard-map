@@ -116,15 +116,13 @@ def adapter_entrypoint(adapter_class, layer_arguments, workspace_item=None):
         group=ADAPTER_ENTRY_POINT):
         if entrypoint.name == adapter_class:
             try:
-                real_adapter = entrypoint.load()
-                real_adapter = real_adapter(
-                    workspace_item,
-                    layer_arguments=layer_arguments,
-                    adapter_class=adapter_class)
+                adapter = entrypoint.load()
             except ImportError, e:
                 logger.critical("Invalid entry point: %s", e)
                 raise
-            return real_adapter
+            return adapter(workspace_item,
+                           layer_arguments=layer_arguments,
+                           adapter_class=adapter_class)
     raise AdapterClassNotFoundError(
         u'Entry point for %r not found' % adapter_class)
 
@@ -694,6 +692,7 @@ class FlotGraphAxes(object):
         # ^^^ list of dicts in the format {'label': x, 'data':[(x, y), (x, y)]}
         self.y_min = None
         self.y_max = None
+        self.ylabel = None
 
     def set_ylabel(self, ylabel):
         self.ylabel = ylabel
@@ -758,6 +757,10 @@ class FlotGraphAxes(object):
         })
 
     def grid(self, grid):
+        '''no-op for FlotGraph'''
+        pass
+
+    def set_ylim(self, y_min, y_max):
         '''no-op for FlotGraph'''
         pass
 

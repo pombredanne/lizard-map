@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 # The colors that are used in graphs
 COLORS_DEFAULT = [
     {'mapnik': 'blue', 'display_name': _('blue')},
-    {'mapnik': 'magenta', 'display_name': _('magenta')},
-    {'mapnik': 'yellow', 'display_name': _('yellow')},
+    {'mapnik': 'darkred', 'display_name': _('darkred')},
+    {'mapnik': 'green', 'display_name': _('green')},
     {'mapnik': 'black', 'display_name': _('black')},
     {'mapnik': 'cyan', 'display_name': _('cyan')},
-    {'mapnik': 'red', 'display_name': _('red')},
+    {'mapnik': 'yellow', 'display_name': _('yellow')},
     {'mapnik': 'lightblue', 'display_name': _('lightblue')},
     {'mapnik': 'grey', 'display_name': _('grey')},
     ]
@@ -391,13 +391,11 @@ class WorkspaceItemAdapter(object):
                 identifier_str[str(k)] = v
             location = self.location(**identifier_str)
             title = location['name']
-            if len(identifiers) > 1:
-                title += ' + ...'
         else:
             title = self.workspace_mixin_item.name
 
         # Build "adapter-image" url for current adapter and identifiers.
-        img_url = self.workspace_mixin_item.url(
+        image_graph_url = self.workspace_mixin_item.url(
             "lizard_map_adapter_image", identifiers)
         flot_graph_data_url = self.workspace_mixin_item.url(
             "lizard_map_adapter_flot_graph_data", identifiers)
@@ -424,7 +422,7 @@ class WorkspaceItemAdapter(object):
 
         render_kwargs = {
             'title': title,
-            'img_url': img_url,
+            'image_graph_url': image_graph_url,
             'flot_graph_data_url': flot_graph_data_url,
             'symbol_url': self.symbol_url(),
             'collage_item_props': collage_item_props,

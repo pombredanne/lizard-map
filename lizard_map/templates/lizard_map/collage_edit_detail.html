@@ -1,12 +1,5 @@
-{#% extends "lizard_ui/lizardbase.html" %#}
 {% extends "lizard_map/lizardgis.html" %}
-{% load workspaces %}
-
-{% block javascript %}
-{{ block.super }}
-<script type="text/javascript"
-        src="{{ STATIC_URL }}lizard_map/graph.js"></script>
-{% endblock %}
+{% load i18n workspaces %}
 
 {% block sidebar %}
 
@@ -15,55 +8,28 @@
 
 {% endblock %}
 
-{% block above-content %}
-  <a href="{% url lizard_map_date_range %}?reload_screen_after="
-     id="date-range"
-     title='Van {{ view.date_start_period|date:"d-m-Y" }} t/m {{ view.date_end_period|date:"d-m-Y" }}'
-     class="title datepicker-icon action-icon ajax-dialog-onchange reload-after-submit"
-     data-replace-items="date-range"
-     data-size="s"
-     rel="tipsy-south">&nbsp;</a>
-  {{ block.super }} {# Nothing yet #}
-{% endblock %}
-
 {% block content %}
-{# Popups: invisible #}
-<div id="dialog">
-  <div id="dialog-content">
-  </div>
-</div>
 <div id="textual">
   <div id="collage">
-    <h2>Selectie</h2>
     {% for grouping_hint, collage_items in view.grouped_collage_items.items %}
-
-    <div>&nbsp;</div>
     <h3>{{ collage_items.0.data_description }}</h3>
     {% collage_items_html collage_items 'True' view.request %}
-    <div>&nbsp;</div>
-
     {% if collage_items.0.collage_detail_show_edit_block %}
-    <h3>Bewerken</h3>
-    <table class="table">
+    <h3>Gegevens</h3>
+    <table class="table table-bordered">
       <thead><tr>
         <th>Naam</th>
-        <th>Bewerk</th>
         <th>Toon tabel</th>
-        <th>Export csv</th>
+        <th>Exporteer csv</th>
       </tr></thead>
       <tbody>
         {% for collage_item in collage_items %}
         <tr>
           <td>{{ collage_item.name }}</td>
-          <td>
-	  {% if collage_item.collage_detail_edit_action == 'graph' %}
-	    <a href="{% url lizard_map_collage_item_editor collage_item_id=collage_item.id %}" class="ss_sprite ss_chart_line_edit collate-edit-popup">Bewerk</a>
-	  {% endif %}
-          </td>
           <td><a href="{% adapter_url collage_item 'html' %}"
                  class="ss_sprite ss_table collage-table-popup">Toon tabel</a></td>
           <td><a href="{% adapter_url collage_item 'csv' %}"
-                 class="ss_sprite ss_table_save">Export csv</a></td>
+                 class="ss_sprite ss_table_save">Exporteer csv</a></td>
         </tr>
         {% endfor %}
 
@@ -75,23 +41,18 @@
     {% if collage_items.0.collage_detail_show_statistics_block %}
     {# Statistics. TODO: change links to javascript. Reloading is unnecessary#}
     <h3>Statistieken</h3>
-    {% if view.hide_statistics %}
-    <a href="./#" class="ss_sprite ss_table_add">Statistieken tonen</a>
-    {% else %}
-    <a href="?hide_statistics=True" class="ss_sprite ss_table_delete">Statistieken verbergen</a>
     <div class="data-from-url"
          data-url="{% collage_item_statistics_url collage_items %}"></div>
     {% endif %}
-    {% endif %}
 
     {% endfor %}
+
     <p>
       {# calculate stats for your collage-edits collage items #}
       <a href="{% url lizard_map_statistics_csv %}"
          class="ss_table_save ss_sprite noprint"
-         title="Export alle statistieken in csv">Export alle statistieken</a>
+         title="Exporteer alle statistieken in csv">Exporteer alle statistieken</a>
     </p>
-
   </div>
 </div>
 

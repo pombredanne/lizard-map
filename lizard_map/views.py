@@ -6,6 +6,7 @@ import csv
 import datetime
 import logging
 import urllib2
+import re
 
 from django.conf import settings
 from django.core.urlresolvers import reverse
@@ -24,33 +25,30 @@ from django.views.generic.base import TemplateView
 from django.views.generic.base import View
 from django.views.generic.edit import FormView
 from djangorestframework.views import View as JsonView
+from djangorestframework.resources import Resource
 from lizard_ui.layout import Action
 from lizard_ui.models import ApplicationIcon
 from lizard_ui.views import UiView
 from lizard_ui.views import IconView
-import Image
+from lizard_map.adapter import adapter_serialize
+from PIL import Image
 import iso8601
 import mapnik
 
-#from lizard_map.daterange import deltatime_range
-#from lizard_map.daterange import store_timedelta_range
 from lizard_map import coordinates
 from lizard_map.adapter import adapter_entrypoint
 from lizard_map.adapter import adapter_layer_arguments
 from lizard_map.adapter import parse_identifier_json
-from lizard_map.animation import AnimationSettings
-from lizard_map.animation import slider_layout_extra
 from lizard_map.coordinates import DEFAULT_OSM_LAYER_URL
 from lizard_map.coordinates import transform_point
 from lizard_map.dateperiods import ALL
 from lizard_map.dateperiods import MONTH
-from lizard_map.daterange import compute_and_store_start_end
 from lizard_map.daterange import current_period
 from lizard_map.daterange import current_start_end_dates
+from lizard_map.daterange import SESSION_DT_RANGETYPE, SESSION_DT_START, SESSION_DT_END
 from lizard_map.forms import CollageForm
 from lizard_map.forms import CollageAddForm
 from lizard_map.forms import CollageItemEditorForm
-from lizard_map.forms import DateRangeForm
 from lizard_map.forms import EditForm
 from lizard_map.forms import EmptyForm
 from lizard_map.forms import WorkspaceLoadForm
@@ -98,6 +96,7 @@ class WorkspaceMixin(object):
     javascript_click_handler = 'popup_click_handler'
     # javascript_click_handler = ''
 
+    @property
     def workspace(self):
         """Implement a function that returns a workspace-storage,
         workspace-edit or other workspace."""
@@ -108,7 +107,7 @@ class WorkspaceMixin(object):
         because the datetime settings could be changed in the
         meanwhile."""
         animation_slider = None
-        if self.workspace().is_animatable:
+        if self.workspace.is_animatable:
             animation_slider = AnimationSettings(self.request).info()
         return animation_slider
 
@@ -136,7 +135,7 @@ class WorkspaceMixin(object):
 
     def wms_layers(self):
         """Return the workspace's and our own extra wms layers."""
-        from_workspace = self.workspace().wms_layers()
+        from_workspace = self.workspace.wms_layers()
         extra = self.extra_wms_layers() or []
         # ^^^ To work around '[] + None' error.
         return from_workspace + extra
@@ -150,6 +149,7 @@ class WorkspaceEditMixin(WorkspaceMixin):
                 self.request.session.session_key, user=self.request.user)
         return self._workspace_edit
 
+    @property
     def workspace(self):
         return self.workspace_edit()
 
@@ -338,21 +338,36 @@ class AppView(WorkspaceEditMixin, GoogleTrackingMixin, CollageMixin,
     def legends(self):
         """Return legends for the rightbar."""
         result = []
-        workspace_items = self.workspace().workspace_items.filter(
-            visible=True).reverse()
+        workspace_items = self.workspace.workspace_items.filter(
+            visible=True)
         for workspace_item in workspace_items:
             logger.debug("Looking for legend url for %s...", workspace_item)
-            if not hasattr(workspace_item.adapter, 'legend_image_urls'):
-                logger.debug(
-                    "No legend_image_urls() on this ws item's adapter.")
-                continue
-            image_urls = workspace_item.adapter.legend_image_urls()
-            if not image_urls:
-                # Don't show a non-existant image.
-                continue
-            result.append(Legend(
-                    name=workspace_item.name,
-                    image_urls=image_urls))
+            found_suitable_legend = False
+            if not hasattr(workspace_item.adapter, 'legend'):
+                logger.debug("No legend() on this ws item's adapter.")
+            else:
+                legend = workspace_item.adapter.legend()
+                if legend:
+                    result.append(
+                        Legend(
+                            name=workspace_item.name,
+                            subitems=legend
+                        )
+                    )
+                    found_suitable_legend = True
+            if not found_suitable_legend:
+                if not hasattr(workspace_item.adapter, 'legend_image_urls'):
+                    logger.debug("No legend_image_urls() on this ws item's adapter.")
+                else:
+                    img_urls = workspace_item.adapter.legend_image_urls()
+                    if img_urls:
+                        result.append(
+                            Legend(
+                                name=workspace_item.name,
+                                subitems=[{'img_url': img_url} for img_url in img_urls]
+                            )
+                        )
+                        found_suitable_legend = True
         return result
 
     @property
@@ -375,14 +390,6 @@ class AppView(WorkspaceEditMixin, GoogleTrackingMixin, CollageMixin,
                 icon='icon-calendar',
                 klass='popup-date-range')
             actions.insert(0, set_date_range)
-        if getattr(settings, 'MAP_SHOW_LOCATION_LIST', True):
-            location_list = Action(
-                name=_('Locations'),
-                description=_('Search for locations'),
-                url='javascript:void(null)',
-                icon='icon-search',
-                klass='popup-location-list')
-            actions.insert(0, location_list)
         if getattr(settings, 'MAP_SHOW_DEFAULT_ZOOM', True):
             zoom_to_default = Action(
                 name=_('Default zoom'),
@@ -598,32 +605,6 @@ class WorkspaceLoadView(ActionDialogView):
             "redirect": reverse("lizard_ui.icons")
         }
         return HttpResponse(json.dumps(redirect))
-
-
-class DateRangeView(DateRangeMixin, WorkspaceEditMixin, ActionDialogView):
-    template_name = 'lizard_map/box_daterange.html'
-    template_name_success = template_name
-    form_class = DateRangeForm  # Define your form
-
-    reload_screen_after = False  # Default.
-
-    def form_valid_action(self, form):
-        """
-        Update date range
-        """
-        logger.debug("Updating date range...")
-        date_range = form.cleaned_data
-        compute_and_store_start_end(self.request.session, date_range)
-
-    def get(self, request, *args, **kwargs):
-        self.reload_screen_after = request.GET.__contains__(
-            'reload_screen_after')
-        return super(DateRangeView, self).get(request, *args, **kwargs)
-
-    def post(self, request, *args, **kwargs):
-        self.reload_screen_after = request.GET.__contains__(
-            'reload_screen_after')
-        return super(DateRangeView, self).post(request, *args, **kwargs)
 
 
 class CollageItemEditorView(ActionDialogView):
@@ -974,8 +955,12 @@ def popup_json(found, popup_id=None, hide_add_snippet=False, request=None):
         #     x_found, y_found = display_object['google_coords']
         html[key] = html_per_workspace_item
 
-    POPUP_MAX_TABS = getattr(settings, 'POPUP_MAX_TABS', 3)
-    result_html = [html[key] for key in display_group_order][:POPUP_MAX_TABS]
+    popup_max_tabs = Setting.get('popup_max_tabs', None)
+    if popup_max_tabs is None:
+        popup_max_tabs = getattr(settings, 'POPUP_MAX_TABS', 3)
+    else:
+        popup_max_tabs = int(popup_max_tabs)
+    result_html = [html[key] for key in display_group_order][:popup_max_tabs]
 
     if popup_id is None:
         popup_id = 'popup-id'
@@ -1123,7 +1108,10 @@ def wms(request, workspace_item_id, workspace_storage_id=None,
     provided, it will take your own WorkspaceEdit.
     """
 
+    workspace_item_id = int(workspace_item_id)
+
     if workspace_storage_id is not None:
+        workspace_storage_id = int(workspace_storage_id)
         workspace = get_object_or_404(
             WorkspaceStorage, pk=workspace_storage_id)
     elif workspace_storage_slug is not None:
@@ -1293,13 +1281,40 @@ def search_coordinates(request,
             return popup_json([], request=request)
 
 
-class CollageDetailView(
-    CollageMixin, DateRangeMixin, UiView):
+class CollageDetailView(CollageMixin, DateRangeMixin, UiView):
     """
     Shows "my collage" as big page.
     """
+    title = _('Collage')
     template_name = 'lizard_map/collage_edit_detail.html'
     hide_statistics = False
+
+    @property
+    def content_actions(self):
+        actions = super(CollageDetailView, self).content_actions
+        if getattr(settings, 'MAP_SHOW_DATE_RANGE', True):
+            set_date_range = Action(
+                name='',
+                description=_('Verander het datumbereik van de metingen.'),
+                url='javascript:void(null)', #reverse('lizard_map_date_range'),
+                icon='icon-calendar',
+                klass='popup-date-range reload-after-action')
+            actions.insert(0, set_date_range)
+        return actions
+
+    def breadcrumbs(self):
+        initial = [
+            Action(
+                name=_('Home'),
+                url='/',
+                description=_('Back to homepage')
+            ),
+            Action(
+                name=_('Collage'),
+                url=reverse('lizard_map_collage_edit_detail')
+            ),
+        ]
+        return initial
 
     def grouped_collage_items(self):
         """A grouped collage item is a collage item with property
@@ -1311,7 +1326,6 @@ class CollageDetailView(
 
     def get(self, request, *args, **kwargs):
         self.hide_statistics = request.GET.get('hide_statistics', False)
-
         return super(CollageDetailView, self).get(request, *args, **kwargs)
 
 
@@ -1470,95 +1484,6 @@ class WorkspaceEmptyView(WorkspaceEditMixin, ActionDialogView):
         workspace_edit = WorkspaceEdit.get_or_create(
             self.request.session.session_key, self.request.user)
         workspace_edit.workspace_items.all().delete()
-
-
-"""
-Export
-"""
-
-
-# # TODO: update to L3
-# def export_snippet_group_csv(request, snippet_group_id):
-#     """
-#     Creates a table with each location as column. Each row is a datetime.
-#     """
-#     snippet_group = WorkspaceCollageSnippetGroup.objects.get(
-#         pk=snippet_group_id)
-#     start_date, end_date = current_start_end_dates(request)
-#     table = snippet_group.values_table(start_date, end_date)
-
-#     response = HttpResponse(mimetype='text/csv')
-#     response['Content-Disposition'] = 'attachment; filename=export.csv'
-#     writer = csv.writer(response)
-#     for row in table:
-#         writer.writerow(row)
-#     return response
-
-
-# # TODO: update to L3
-# def export_identifier_csv(request, workspace_item_id=None,
-#     identifier_json=None):
-#     """
-#     Uses adapter.values to get values. Then return these
-# #values in csv format.
-#     """
-#     # Collect input.
-#     if workspace_item_id is None:
-#         workspace_item_id = request.GET.get('workspace_item_id')
-#     if identifier_json is None:
-#         identifier_json = request.GET.get('identifier_json')
-#     workspace_item = WorkspaceItem.objects.get(pk=workspace_item_id)
-#     identifier = parse_identifier_json(identifier_json)
-#     start_date, end_date = current_start_end_dates(request)
-#     adapter = workspace_item.adapter
-#     values = adapter.values(identifier, start_date, end_date)
-#     filename = '%s.csv' % (
-#         adapter.location(**identifier).get('name', 'export'))
-
-#     # Make the csv output.
-#     response = HttpResponse(mimetype='text/csv')
-#     response['Content-Disposition'] = 'attachment; filename="%s"' % filename
-#     writer = csv.writer(response)
-#     writer.writerow(['Datum + tijdstip', 'Waarde', 'Eenheid'])
-#     for row in values:
-#         writer.writerow([row['datetime'], row['value'], row['unit']])
-#     return response
-
-
-# # TODO: update to L3
-# def export_snippet_group_statistics_csv(request, snippet_group_id=None):
-#     """
-#     Exports snippet_group statistics as csv.
-#     """
-#     if snippet_group_id is None:
-#         snippet_group_id = request.GET.get('snippet_group_id')
-#     snippet_group = WorkspaceCollageSnippetGroup.objects.get(
-#         pk=snippet_group_id)
-#     start_date, end_date = current_start_end_dates(request)
-#     statistics = snippet_group.statistics(start_date, end_date)
-
-#     response = HttpResponse(mimetype='text/csv')
-#     response['Content-Disposition'] = ('attachment; '
-#                                        'filename=export_statistics.csv')
-#     writer = csv.writer(response)
-#     colnames = ['min', 'max', 'avg']
-#     colnamesdisplay = ['min', 'max', 'avg']
-#     if snippet_group.boundary_value is not None:
-#         colnames.append('count_lt')
-#         colnames.append('count_gte')
-#         colnamesdisplay.append(
-#             '# < %s' % snippet_group.boundary_value)
-#         colnamesdisplay.append(
-#             '# >= %s' % snippet_group.boundary_value)
-#     if snippet_group.percentile_value is not None:
-#         colnames.append('percentile')
-#         colnamesdisplay.append(
-#             'percentile %f' % snippet_group.percentile_value)
-#     writer.writerow(colnamesdisplay)
-#     for row in statistics:
-#         writer.writerow([row[colname] for colname in colnames])
-#     return response
-
 
 """
 Map locations are stored in the session with key MAP_SESSION. It
@@ -1861,42 +1786,10 @@ class AdapterImageView(AdapterMixin, ImageMixin, View):
 
         # Add animation slider position, info from session data.
         layout_extra = self.layout_extra_from_request()
-        layout_extra.update(slider_layout_extra(self.request))
 
         return current_adapter.image(
             identifier_list, start_date, end_date,
             width, height,
-            layout_extra=layout_extra)
-
-
-class AdapterFlotGraphDataView(AdapterMixin, JsonView):
-    """
-    Return result of adapter.flot_graph_data, using given parameters.
-
-    URL GET parameters:
-    - adapter_class (required)
-    - identifier (required, multiple supported)
-    - start_date, end_date (optional, iso8601 format, default current)
-    - layout_extra (optional)
-    """
-
-    _IGNORE_IE_ACCEPT_HEADER = False  # Keep this, if you want IE to work
-
-    def get(self, request, *args, **kwargs):
-        """
-        Note: named url arguments become kwargs.
-        """
-        current_adapter = self.adapter(kwargs['adapter_class'])
-        identifier_list = self.identifiers()
-
-        start_date, end_date = self.start_end_dates_from_request()
-
-        # Add animation slider position, info from session data.
-        layout_extra = self.layout_extra_from_request()
-        layout_extra.update(slider_layout_extra(self.request))
-
-        return current_adapter.flot_graph_data(
-            identifier_list, start_date, end_date,
             layout_extra=layout_extra)
 
 
@@ -1947,3 +1840,157 @@ class HomepageView(AppView, IconView):
 
 
 MapIconView = HomepageView  # BBB
+
+#
+# new RESTful Lizard API
+#
+
+class AdapterFlotGraphDataView(AdapterMixin, JsonView):
+    """
+    Return result of adapter.flot_graph_data, using given parameters.
+
+    URL GET parameters:
+    - adapter_class (required)
+    - identifier (required, multiple supported)
+    - start_date, end_date (optional, iso8601 format, default current)
+    - layout_extra (optional)
+    """
+
+    _IGNORE_IE_ACCEPT_HEADER = False  # Keep this, if you want IE to work
+
+    def get(self, request, *args, **kwargs):
+        """
+        Note: named url arguments become kwargs.
+        """
+        current_adapter = self.adapter(kwargs['adapter_class'])
+        identifier_list = self.identifiers()
+
+        start_date, end_date = self.start_end_dates_from_request()
+
+        # Add animation slider position, info from session data.
+        layout_extra = self.layout_extra_from_request()
+
+        return current_adapter.flot_graph_data(
+            identifier_list, start_date, end_date,
+            layout_extra=layout_extra)
+
+from django import forms
+from dateutil import parser as date_parser
+from django.core.exceptions import ValidationError
+
+class JsonDateTimeField(forms.DateTimeField):
+    '''
+    Supports field value as ISO 8601 string.
+    '''
+    def to_python(self, value):
+        try:
+            value = super(JsonDateTimeField, self).to_python(value)
+        except ValidationError as parent_exception:
+            try:
+                value = date_parser.parse(value)
+            except ValueError:
+                raise parent_exception
+        return value
+
+class ViewStateForm(forms.Form):
+    range_type = forms.CharField(required=False, help_text='custom, day, week, year, et cetera')
+    dt_start = JsonDateTimeField(required=False, help_text='ISO8601 datetime string')
+    dt_end = JsonDateTimeField(required=False, help_text='ISO8601 datetime string')
+
+class ViewStateService(JsonView, WorkspaceEditMixin):
+    _IGNORE_IE_ACCEPT_HEADER = False  # Keep this, if you want IE to work
+    form = ViewStateForm
+
+    @never_cache
+    def dispatch(self, request, *args, **kwargs):
+        return super(ViewStateService, self).dispatch(request, *args, **kwargs)
+
+    def get(self, request, *args, **kwargs):
+        session = request.session
+
+        # try getting values from session
+        range_type = session.get(SESSION_DT_RANGETYPE, None)
+        dt_start = session.get(SESSION_DT_START, None)
+        dt_end = session.get(SESSION_DT_END, None)
+
+        today = datetime.datetime.now()
+        if not range_type:
+            range_type = getattr(settings, 'DEFAULT_RANGE_TYPE', '2_day')
+        elif range_type == 'custom' and not (dt_start and dt_end):
+            range_type = getattr(settings, 'DEFAULT_RANGE_TYPE', '2_day')
+
+        return {
+            'range_type': range_type,
+            'dt_start': dt_start,
+            'dt_end': dt_end
+        }
+
+    def put(self, request, *args, **kwargs):
+        session = request.session
+
+        # self.CONTENT contains the validated values
+        # it will raise an error 400 exception upon first access
+        range_type = self.CONTENT['range_type']
+        dt_start = self.CONTENT['dt_start']
+        dt_end = self.CONTENT['dt_end']
+        session[SESSION_DT_RANGETYPE] = range_type
+        session[SESSION_DT_START] = dt_start
+        session[SESSION_DT_END] = dt_end
+        # also store in database: why in two places?
+        if dt_start and dt_end:
+            workspace_edit = self.workspace_edit()
+            workspace_edit.dt_start = dt_start
+            workspace_edit.dt_end = dt_end
+            workspace_edit.save()
+
+
+MAX_LOCATIONS = getattr(settings, 'MAX_LOCATIONS', 50)
+# no way to know how the database driver escapes things, so apply
+# a whitelist to strings, before passing them in the raw SQL query
+location_name_character_whitelist = re.compile(r'''[\W^ ^\,^\-^\.]''')
+
+class LocationListService(JsonView, WorkspaceEditMixin):
+    _IGNORE_IE_ACCEPT_HEADER = False  # Keep this, if you want IE to work
+
+    @never_cache
+    def dispatch(self, request, *args, **kwargs):
+        return super(LocationListService, self).dispatch(request, *args, **kwargs)
+
+    def get(self, request, *args, **kwargs):
+        name = request.GET.get('name', None)
+        # don't return anything in case name isn't passed, or is an empty string
+        if not name:
+            return []
+        # clean weird character from the name
+        name = name.strip()
+        name = location_name_character_whitelist.sub('', name)
+        # don't return anything in case a very short string is passed
+        if len(name) < 3:
+            return []
+        # grab this users workspace
+        workspace_edit = self.workspace_edit()
+        locations = []
+        # iterate trough all selected layers
+        for workspace_item in workspace_edit.workspace_items.all():
+            # skip invisible items
+            if not workspace_item.visible:
+                continue
+            adapter = workspace_item.adapter
+            adapter_class = adapter.adapter_class
+            layer_arguments = json.dumps(adapter.layer_arguments)
+            # skip items whose workspace adapter don't support location searching
+            if not hasattr(adapter, 'location_list'):
+                logger.debug("No location_list() on this ws item's adapter.")
+                continue
+            # request the list of locations from the adapter
+            for identifier, location_name in adapter.location_list(name):
+                identifier = adapter_serialize(identifier)
+                locations.append((adapter_class, layer_arguments, identifier, location_name))
+            # we can stop searching the remaining adapters in case MAX_LOCATIONS is already reached
+            if len(locations) > MAX_LOCATIONS:
+                break
+        # ensure we don't return more than MAX_LOCATIONS values
+        locations = locations[:MAX_LOCATIONS]
+        add_href = reverse('lizard_map_collage_add')
+        locations = [loc + (add_href,) for loc in locations]
+        return locations

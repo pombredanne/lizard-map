@@ -1,5 +1,7 @@
 {% if acceptable.description %}
-  <a class="workspace-acceptable-info has_popover"
+  <a class="has_popover"
+     style="display: block; float:right;"
+     {# ^^^ should be in a stylesheet, but lizard-map's one is gone #}
      data-content="{{ acceptable.description }}"
      data-trigger="click"
      title="{{ acceptable.name }}"

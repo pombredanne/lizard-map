@@ -1,8 +1,12 @@
 Changelog of lizard-map
 =======================
 
-4.7deltaportaal (unreleased)
-----------------------------
+
+
+4.10 (unreleased)
+-----------------
+
+- Support mixed flot/matplotlib (IE8) graphs.
 
 - Showing metadata at the bottom of the regular description popup. The popup
   is now an 'i' you should click instead of an on-hover dialog. Works better
@@ -15,6 +19,64 @@ Changelog of lizard-map
 - CQL_filtering is possible on featureinfo items on wms layers.
 
 - Content actions can now be turned off via settings.
+
+
+4.9 (2012-10-18)
+----------------
+
+- Fixed some styling issues.
+
+- Fix test build config, travis & pep8.
+
+
+4.8 (2012-10-05)
+----------------
+
+- Fix a missing css and made some javascript code optional.
+
+
+4.7 (2012-10-04)
+----------------
+
+- Relicensed from GPL to LGPL.
+
+- Added MAP_SHOW_MULTISELECT, MAP_SHOW_DATE_RANGE and MAP_SHOW_DEFAULT_ZOOM
+  optional settings to make it possible to hide the three default lizard-map
+  content actions. They're True by default.
+
+- Added popup with subtabs.
+
+- Merged and cleaned various JavaScript files.
+
+- Link to Pillow instead of PIL.
+
+- Move most CSS styling to lizard-ui.
+
+- Fix some styling issues, typo's.
+
+- Revived the collage page.
+
+- Switch to a Twitter Bootstrap based date-range selector.
+
+- Fix legend order.
+
+- Disable obsolete OpenLayers reprojection.
+
+- Changed default graph colours.
+
+- Popup is shown directly after click on map.
+
+- Add some iPad exceptions and add graph navigation.
+
+- Add support for location search.
+
+- Add more resolutions for Rijksdriehoek.
+
+- Started a simple JavaScript view state holder on the client.
+  In the future this will hold map extent, map layers etc. as well.
+
+- Tables now have borders, as requested.
+>>>>>>> master
 
 
 4.6 (2012-08-23)

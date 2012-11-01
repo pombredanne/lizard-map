@@ -2,10 +2,6 @@
 {% load i18n map workspaces %}
 
 {% block map-javascript %}
-  <script type="text/javascript"
-          src="{{ STATIC_URL }}lizard_map/lizard_wms.js"></script>
-  <script type="text/javascript"
-          src="{{ STATIC_URL }}lizard_map/rest.js"></script>
   {% if view.has_google %}
     <script src="http://maps.google.com/maps?file=api&amp;v=2&amp;key={{ view.map_variables.googlemaps_api_key }}"></script>
   {% endif %}
@@ -74,5 +70,5 @@
        {% endautoescape %}
      {% endfor %}
   </div>
-  <div id="map" class="give-me-height"></div>
+  <div id="map"></div>
 {% endblock content %}

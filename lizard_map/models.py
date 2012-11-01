@@ -383,12 +383,19 @@ class WorkspaceModelMixin(object):
                     'isBaseLayer': False,
                     'opacity': 1.0
                 })
+                if isinstance(workspace_item, WorkspaceStorageItem):
+                    url = reverse('lizard_map_workspace_storage_wms', kwargs={
+                        'workspace_storage_id': workspace_item.workspace.id,
+                        'workspace_item_id': workspace_item.id
+                    })
+                else:
+                    url = reverse('lizard_map_workspace_edit_wms', kwargs={'workspace_item_id': workspace_item.id})
                 return {
                     'wms_id': workspace_item.id,
                     'name': workspace_item.name,
-                    'url': reverse(
-                        'lizard_map_workspace_edit_wms',
-                        kwargs={'workspace_item_id': workspace_item.id}),
+                    'url': url,
+                    # On the deltaportaal branch, this was hardcoded to the
+                    # edit_wms url above.
                     'params': params,
                     'options': options,
                     'index': workspace_item.index,
@@ -438,7 +445,7 @@ class WorkspaceEdit(
         workspace_storage.save()
 
         # Create new workspace items.
-        for workspace_edit_item in self.workspace_items.all():
+        for workspace_edit_item in self.workspace_items.filter(visible=True):
             workspace_storage_item = workspace_edit_item.as_storage(
                 workspace=workspace_storage)
             workspace_storage_item.save()
@@ -519,12 +526,13 @@ class CollageEdit(UserSessionMixin):
                         name, identifier):
         """Check if an item with the same data already exists in the
         collage."""
+        adapter_layer_json = json.loads(adapter_layer_json)
         for item in (self.collage_items
             .filter(adapter_class=adapter_class)
-            .filter(adapter_layer_json=adapter_layer_json)
             .filter(name=name)):
             # Easiest way to compare identifiers?
-            if json.dumps(item.identifier) == json.dumps(identifier):
+            if item.identifier == identifier and \
+               json.loads(item.adapter_layer_json) == adapter_layer_json:
                 return True
         return False
 
